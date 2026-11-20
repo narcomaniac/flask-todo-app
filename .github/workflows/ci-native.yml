@@ -1,0 +1,39 @@
+
+name: CI Native
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Start Flask server
+        run: |
+          docker run -d --name flask-ci --network host \
+            -v "$GITHUB_WORKSPACE:/app" -w /app \
+            python:2.7-slim \
+            sh -c "pip install --no-cache-dir 'setuptools<45' 'Werkzeug<1' 'MarkupSafe<2' 'SQLAlchemy<1.4' 'Click<8' && pip install --no-cache-dir -r requirements.txt && python manage.py runserver"
+
+      - name: Smoke test Flask server
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:7345/ > /dev/null; then
+              echo "Smoke test PASSED"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Smoke test FAILED"
+          docker logs flask-ci
+          exit 1
+
+      - name: Show server logs
+        if: always()
+        run: docker logs flask-ci || true
